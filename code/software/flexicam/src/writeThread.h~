@@ -1,0 +1,66 @@
+
+#ifndef moveThread_h
+#define moveThread_h
+
+#include <string>
+#include <yarp/os/Network.h>
+#include <yarp/os/RFModule.h>
+#include <yarp/os/RateThread.h>
+#include <yarp/os/BufferedPort.h>
+#include <yarp/os/Time.h>
+#include <yarp/sig/Vector.h>
+#include <yarp/os/Semaphore.h>
+#include <yarp/dev/Drivers.h>
+#include <yarp/dev/GazeControl.h>
+#include <yarp/dev/PolyDriver.h>
+// #include "observeThread.h"
+// YARP_DECLARE_DEVICES(icubmod)
+#include <iostream> 
+#include <cstdlib>   
+#include <time.h>
+#include <unistd.h>
+using namespace std;
+using namespace yarp::os;
+using namespace yarp::dev;
+using namespace yarp::sig;
+class writeThread: public RateThread
+{
+protected:
+    Port port;
+    BufferedPort<Bottle> &b_port;
+    Bottle Message;
+    serialComm &robot;
+public:
+    writeThread(ResourceFinder &_rf,  serialComm &r, BufferedPort<Bottle> &p1) : RateThread(20), rf(_rf) {b_port = p1; robot = r}
+    bool threadInit()
+	{
+	  setRate(int(20.0));
+	  return true;
+	}
+
+    void write(int d){
+	 Bottle& data = b_port.prepare(); 
+	 data.addInt(d);
+	 d_port.write();		
+	}
+
+    void{}
+
+    void run(){
+		
+	}
+    void interrupt();
+    bool respComd(const Bottle &command){
+  string command = Command.get(0).toString().c_str();
+  if (command == "MoveHead"){
+   // i = 1;
+    return true;    
+  }
+      return true;
+    }
+    
+}
+    void threadRelease(){
+	}
+};
+#endif

@@ -16,6 +16,7 @@ Scenario :
 #include <yarp/dev/all.h>
 #include <yarp/sig/all.h>
 #include <yarp/math/Math.h>
+#include <boost/regex.hpp>
 using namespace std;
 using namespace yarp::os;
 using namespace yarp::dev;
@@ -27,17 +28,16 @@ using namespace boost::asio;
 class serialComm{
 	private:
 		string portName;
-		int buff_size;
 		serial_port* sp;
 	public:
-		serialComm(string pn = "/dev/pts/26",int bs = 100) {
-			buff_size = bs;
+		serialComm(string pn = "/dev/pts/27") {
 			portName = pn;
 		}
 		void open ()
 		{
 			static io_service ios;
-			sp = new serial_port(ios, portName);						
+			sp = new serial_port(ios, portName);
+			sendData("s");  // TO START THE ROBOT
 		}
 		void close ()
 		{
@@ -50,29 +50,68 @@ class serialComm{
 		{
 			char c;
 			std::string result;
+			cout << result << endl << flush;
 			for(;;)
 			{
 				read(*sp,buffer(&c,1));
 				switch(c)
-			    	{
+				{
 					case '\r':
 					    break;
 					case '\n':
 					    return result;
 					default:
 					    result+=c;
-			    	}
+				}
 			}
 		}
+};
+
+
+class port2serial : public RateThread {
+	ResourceFinder &rf;
+	BufferedPort<Bottle> *b_port;
+	serialComm *robot;
+	public:
+		port2serial(ResourceFinder &_rf, BufferedPort<Bottle> &b_p, serialComm &r) : RateThread(20), rf(_rf) {b_port = &b_p;robot = &r;}
+		void readfromport(){
+			cout << "rfp" << endl << flush;
+			Bottle *message = b_port->read();
+			string data = message->get(0).asString().c_str();
+			cout << data << endl << flush;
+	  	}
+
+
+
+		bool threadInit()
+		{
+		  setRate(int(20.0));
+		  return true;
+		}
+
+		void run()
+		{readfromport();cout << "after reading from port" << endl << flush;}
+
+    void interrupt()
+    {
+    }
+
+
+bool respComd(const Bottle &Command){
+    return true;
+}
+
+void threadRelease(){}
 
 };
+
 
 
 /***************************************************/
 class CtrlModule: public RFModule
 {
 protected:
-  Port yawIn,yawOut,headPitchIn,headPitchOut,neckPitchIn,neckPitchOut,rollIn,rollOut;
+  BufferedPort<Bottle> yawIn,yawOut,headPitchIn,headPitchOut,neckPitchIn,neckPitchOut,rollIn,rollOut;
   RpcServer rpcPort;
   
   Mutex mutex;
@@ -94,13 +133,30 @@ public:
     
     rpcPort.open("/"+name+"/service");
     attach(rpcPort);
-
+cout << "before starting robot" << endl << flush;
 
     robot = serialComm();
     robot.open();
+cout << "Before creating the object" << endl << flush;
+    port2serial p2s_roll(rf,rollOut,robot), p2s_headPitch(rf,headPitchOut,robot), p2s_neckPitch(rf,neckPitchOut,robot), p2s_yaw(rf,yawOut,robot);
+cout << "After creating the object" << endl << flush;
+    start_thread(rf, p2s_roll);
+
+    start_thread(rf, p2s_headPitch);
+
+    start_thread(rf, p2s_yaw);
+
+    start_thread(rf, p2s_neckPitch);
     return true;
   }
-  
+  bool start_thread (ResourceFinder &rf,port2serial &p2s){
+	if (!p2s.start())
+	{
+		cout << "Not able to start the thread" << endl << flush;
+		return false;
+	}
+	return true;
+  }
   /***************************************************/
   bool interruptModule()
   {
@@ -168,15 +224,67 @@ public:
     return 0.0;     // sync upon incoming images
   }
   
+
+  void writetoport(BufferedPort<Bottle> &b_port, int d){
+	Bottle& data = b_port.prepare();
+	data.addInt(d);
+	b_port.write();
+  }
+
+
+
+
+
+  bool serial2bottle(){
+	string data = robot.readData();
+	if (data.length() != 0){
+		boost::regex motormatch("([0-9]+) ([0-9]+)");
+		boost::regex tokenizer("([0-9]+)");
+                int matches[2];
+		if(regex_match(data, motormatch)){
+			boost::sregex_iterator m1(data.begin(), data.end(), tokenizer);
+			boost::sregex_iterator m2;
+			for (int i = 0; m1 != m2; ++m1, i++){
+				matches[i] = atoi(m1->str().c_str());
+			}
+			switch (matches[0]){
+				case 1:
+					writetoport(rollIn,matches[1]);
+					break;
+				case 2:
+					writetoport(headPitchIn,matches[1]);
+					break;
+				case 3:
+					writetoport(neckPitchIn,matches[1]);
+					break;
+				case 4:
+					writetoport(yawIn,matches[1]);
+					break;
+				default:
+					cout << "Given condition not in the database" << endl << flush;
+					break;
+			}
+		} else {
+		cout<<"Error : Data not match"<<endl<<flush;
+		return false;
+		}
+	return true;
+  	}
+  return true;
+  }
+
   /***************************************************/
   bool updateModule()
   {
-	string data = robot.readData();
-	if (data.length() != 0)
-		cout << data << endl << flush; 
-	// robot.sendData("hello world");
+	if (serial2bottle()){
+		return true;	
+	}
+	else {
+		cout << "Error in serial2bottle"<<endl<<flush;
+		return false;
+	}
 	return true; 
-  }
+  }  
 };
 
 
