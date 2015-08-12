@@ -1,0 +1,77 @@
+import serial
+import os
+import subprocess
+import math
+
+def constructMessage(index, angle):
+    return 'm' + str(index) + ' ' + str(angle) + ','
+
+def gaussian(timestamp, stddev, maxtimestamp):
+    a = float(1/(stddev * math.sqrt(2 * math.pi) ))
+    diff = (timestamp - (maxtimestamp-1)/2)
+   
+    ratio = double(diff**2 / (2 * stddev**2))
+    print "ratio", ratio
+    val = a * math.exp(-ratio)
+    print "val", val
+    return val
+
+def moveMotor(ser, index, angle):
+    currentangle = 0
+    maxdelay = 50
+
+    stepsize = 1
+    if angle < currentangle:
+        stepsize = -1
+
+    liststeps = range(currentangle, angle+1)
+    print liststeps
+    timesteps = range(0 , len(liststeps))
+    print timesteps
+    stddev = 1#len(liststeps)/6
+    print stddev
+    for i in range(len(liststeps)):
+        time1 = maxdelay - gaussian(i, 1, len(liststeps))
+        timesteps[i] = time1
+    print timesteps
+
+    #while(currentangle != angle):
+    #ser.write(moveMotor(1, 0))
+
+if __name__ == '__main__':
+    #find the usb device for arduino
+    os.chdir("/dev")
+    proc = subprocess.Popen(['ls'],  stdout=subprocess.PIPE,  stderr=subprocess.PIPE) 
+    out = proc.stdout.read()
+    #print "matching ports " , out
+    print " error " , proc.stderr.read()
+    lines = out.splitlines()
+    USBPORT = ''
+    for i in range(len(lines)):
+        if lines[i].startswith('ttyUSB'):
+            USBPORT = lines[i]
+        elif lines[i].startswith('ttyACM'):
+            USBPORT = lines[i]
+        else:
+            continue
+    USBPORT = '/dev/' + USBPORT     
+    print 'USBPORT' , USBPORT
+    
+
+    #connect to the serial port
+    ser = serial.Serial(USBPORT, 9600)
+    
+    #start the system
+    #ser.write('s')
+
+    #ser.write(moveMotor(1, 0))
+
+    #ser.write(moveMotor(1, 180))
+
+    #ser.write(moveMotor(2, 180))
+
+    moveMotor(ser, 1, 30)
+
+    '''
+    ser.write('m1 110,')
+    '''

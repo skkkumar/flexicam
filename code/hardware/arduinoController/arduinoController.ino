@@ -1,4 +1,6 @@
 #include <Servo.h> 
+#include "Timer.h"
+#include <math.h> 
 
 #define NUM_SERVOS 4
 
@@ -7,33 +9,52 @@ Servo servo1;
 Servo servo2;
 Servo servo3;
 Servo servo4;
-Servo motors [NUM_SERVOS] = {servo1, servo2, servo3, servo4};  // create servo object to control a servo 
-                   // a maximum of eight servo objects can be created 
+Servo motors [NUM_SERVOS] = {
+  servo1, servo2, servo3, servo4};  // create servo object to control a servo 
+// a maximum of eight servo objects can be created 
 //the pins to which the motors are attached
-int pinValues [NUM_SERVOS] = {4, 5, 6, 7};
+int pinValues [NUM_SERVOS] = {
+  4, 5, 6, 7};
 //initial configuration of the motors
-int firstValues [NUM_SERVOS] = {40, 90, 90, 90};
+int firstValues [NUM_SERVOS] = {
+  90, 90, 130, 90};
 //communication variables
 boolean startMessage = true;
 int finalValues [NUM_SERVOS];
+//message type tells whether it is (0) looking for type, (1) start, (2) motor or (3) led message
+int messagetype = 0;
 int message = 0;
 int messagekey = 0;
 int messagepart = 1;
+//server update timer
+Timer updateTimer;
+//flag to see if system has started
+boolean isSystemUp = false;
 
 
 void setup() {
-        Serial.begin(9600);     // opens serial port, sets data rate to 9600 bps
-        
-        for(int i = 0 ; i < 1; i++){   //NUM_SERVOS
-            //attach the servos to the pin
-            motors[i].attach(pinValues[i]);
-            delay(50);
-            //keep the default position
-            //motors[i].write(firstValues[i]);
-            moveMotor(motors[i], firstValues[i], false);
-            //initialize the final values of the servo
-            finalValues[i] = -1;
-        }     
+  Serial.begin(9600);     // opens serial port, sets data rate to 9600 bps
+
+  for(int i = 0 ; i < NUM_SERVOS; i++){   //NUM_SERVOS
+    //attach the servos to the pin
+    motors[i].attach(pinValues[i]);
+    delay(50);
+    finalValues[i] = -1;
+  }  
+  //initialize the timer
+  updateTimer.every(1000, updateServer); 
+
+  startSystem();
+}
+
+void startSystem(){
+  if(! isSystemUp){
+    for(int i = 0 ; i < NUM_SERVOS; i++){
+      moveMotor(motors[i], firstValues[i], false);
+      //initialize the final values of the servo 
+    }   
+    isSystemUp = true; 
+  }
 }
 
 //movees motors either 1) by one step 2) continuously in a loop
@@ -42,98 +63,152 @@ void setup() {
 //finalpos is the final position to which the motor has to be moved
 //single is true if one step has to be executed else false for one continuous loop
 boolean moveMotor(Servo servo, int finalpos, boolean single){
-  
-    //check if final value is achieved
-     int currentpos = servo.read();
-     if (currentpos == finalpos)
-           return true;
-           
-     Serial.print("Current position:"); 
-     Serial.println(currentpos); 
-     
-     Serial.print("Final position:"); 
-     Serial.println(finalpos); 
-     
-     int stepsize = 1;
-     if(finalpos < currentpos)
-          stepsize = -1;
-     
-     //now move the motor
-     if(single){
-          servo.write(currentpos + stepsize); 
-          delay(50);   
-          return false;
-     }
-     else{
-          while(currentpos != finalpos){
-              currentpos = currentpos + stepsize;
-              Serial.print("Current position:"); 
-              Serial.println(currentpos); 
-              servo.write(currentpos);              // tell servo to go to position in variable 'pos' 
-              delay(50);
-          }
-          return true;
-     }
+
+  //check if final value is achieved
+  int currentpos = servo.read();
+  if (currentpos == finalpos)
+    return true;
+
+  Serial.print("Current position:"); 
+  Serial.println(currentpos); 
+
+  Serial.print("Final position:"); 
+  Serial.println(finalpos); 
+
+  int stepsize = 1;
+  if(finalpos < currentpos)
+    stepsize = -1;
+  if(finalpos == -1)
+    stepsize = 0;
+
+  //now move the motor
+  if(single){
+    servo.write(currentpos + stepsize); 
+    //delay(50);   
+    if(currentpos + stepsize == finalpos)
+      return true;
+    return false;
+  }
+  else{
+    while(currentpos != finalpos){
+      currentpos = currentpos + stepsize;
+      Serial.print("Current position:"); 
+      Serial.println(currentpos); 
+      servo.write(currentpos);              // tell servo to go to position in variable 'pos' 
+      //delay(50);
+    }
+    return true;
+  }
 }
 
 //moves the selected motors step by step
 void moveMotors(){
-    for(int i = 0 ; i < NUM_SERVOS; i++){
-           if(finalValues[i]!= -1){
-                 boolean workdone = moveMotor(motors[i], finalValues[i], true);
-                 if (workdone)
-                       finalValues[i] = -1;
-           }
-     }  
+  for(int i = 0 ; i < NUM_SERVOS; i++){
+    if(finalValues[i]!= -1){
+      boolean workdone = moveMotor(motors[i], finalValues[i], true);
+      if (workdone)
+        finalValues[i] = -1;
+    }
+    else{
+      moveMotor(motors[i], -1, true);      
+    }
+  }  
 }
 
 //read bytes from the serial port
 //the format of the message is "motor_index value,"
 //motor_index is 1 based
 void readByte(){
-      if (Serial.available() > 0) {
-            // read the incoming byte:
-            int incomingByte = Serial.read(); 
-            Serial.print("----------------- ");
-            Serial.println(incomingByte);
-                
-            //for message end
-            if (incomingByte == ','){
-              
-                 Serial.print("message end: \n"); 
-                 
-                 if(messagepart %2 == 0){
-                     //assign the value to the key
-                     //check if the key is valid
-                     if (messagekey > 0 && messagekey <= NUM_SERVOS){
-                          finalValues[messagekey - 1] = message;
-                           Serial.print("motor key:  ");
-                           Serial.print( messagekey); 
-                           Serial.print(",motor value:  ");
-                           Serial.println( message);     
-                     }
-                 }
-                 
-                 //reinitialize the system
-                 message = 0;
-                  messagekey = 0;
-                  messagepart = 1;                
+  if (Serial.available() > 0) {
+    // read the incoming byte:
+    int incomingByte = Serial.read(); 
+    Serial.print("----------------- ");
+    Serial.println(incomingByte);
+
+    if(messagetype == 0){
+      if(incomingByte == 's'){
+        Serial.println("start the system");
+        startSystem(); 
+        //set to default 
+        messagetype = 0;
+      }
+      else if(incomingByte == 'm'){
+        Serial.println("move the motor");
+        messagetype = 1;
+      }
+      else if(incomingByte == 'l'){    
+        Serial.println("light the led");
+        messagetype = 2;
+      }
+      else{
+        //ignmessagetypemessagetypeore as of now
+      }
+    } 
+
+    //for motor movement message and led glow
+    else if(messagetype == 1 || messagetype == 2){
+      //for message end
+      if (incomingByte == ','){
+
+        Serial.print("message end: \n"); 
+
+        if(messagepart %2 == 0){
+          //assign the value to the key
+          if(messagetype == 1){
+            //check if the key is valid
+            if (messagekey > 0 && messagekey <= NUM_SERVOS){
+              finalValues[messagekey - 1] = message;
+              Serial.print("motor key:  ");
+              Serial.print( messagekey); 
+              Serial.print(",motor value:  ");
+              Serial.println( message);     
             }
-            //for messagekey and message value separator
-            else if(incomingByte == ' '){ 
-                   messagekey = message;
-                   messagepart = messagepart + 1;
-                   message = 0; 
-           }
-           //for other numeric message values
-           else{     
-                message = message * 10 + (incomingByte-48);
-           }
-      }          
+          }
+          else if(messagetype == 2){
+
+          }
+        }
+
+        //reinitialize the system
+        message = 0;
+        messagekey = 0;
+        messagepart = 1;    
+
+        //reset message type
+        messagetype = 0;            
+      }
+      //for messagekey and message value separator
+      else if(incomingByte == ' '){ 
+        //Serial.print("motor key:  ");
+        //Serial.println( message); 
+        messagekey = message;
+        messagepart = messagepart + 1;
+        message = 0; 
+      }
+      //for other numeric message values
+      else{     
+        message = message * 10 + (incomingByte-48);
+      }
+    }
+  }          
+}
+
+void updateServer(){
+  //construct the message containing motor positions and send over serial port
+  for(int i = 0 ; i < 1; i++){
+    //if( finalValues[i] != -1){
+    Serial.write(i + 48 + 1);
+    Serial.print(' ');
+    Serial.println(motors[i].read());
+    Serial.flush();   
+    //}
+  }    
 }
 
 
 void loop() {
-     //readByte();     
-     //moveMotors();  
+  readByte();     
+  moveMotors(); 
+  updateTimer.update();
 }
+
