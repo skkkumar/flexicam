@@ -92,6 +92,7 @@ flexicam: /home/sriram/Documents/yarp/build/lib/libYARP_name.so
 flexicam: /home/sriram/Documents/yarp/build/lib/libYARP_init.so
 flexicam: /usr/lib/x86_64-linux-gnu/libboost_filesystem.so
 flexicam: /usr/lib/x86_64-linux-gnu/libboost_system.so
+flexicam: /usr/lib/x86_64-linux-gnu/libboost_regex.so
 flexicam: /home/sriram/Documents/yarp/build/lib/libYARP_sig.so
 flexicam: /home/sriram/Documents/yarp/build/lib/libYARP_OS.so
 flexicam: CMakeFiles/flexicam.dir/link.txt
